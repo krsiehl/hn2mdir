@@ -1,4 +1,6 @@
 #!/bin/bash
+shopt -s lastpipe
+declare -A MIDS
 
 output-mail()
 {
@@ -47,8 +49,7 @@ dump-story()
 	# Flattening code ripped off from: https://til.simonwillison.net/jq/extracting-objects-recursively
 	<<<"$STORY" sed -e 's/\\n/ /g' | jq -r \ '[recurse(.children[]) | del(.children)] | .[] | "\(.id) \(.parent_id) \(.created_at_i) \(.author) \(.text)"' \
 		| while read ID PARENT_ID TIMESTAMP AUTHOR TEXT; do
-			# TODO: grep once, store results in a hash table or something
-			if grep -arhq "^Message-ID: <${ID}@news.ycombinator.com>" "$OUTPUTDIR"; then
+			if [ "${MIDS["$ID"]}" = "1" ]; then
 				continue
 			fi
 			FILENAME="$(date +%s).$$_$((INDEX++))"
@@ -69,6 +70,10 @@ if [ ! -d "$OUTPUTDIR" ] || [ ! -d "${OUTPUTDIR}/cur" ] || [ ! -d "${OUTPUTDIR}/
 	echo "$OUTPUTDIR doesn't look like a maildir; bailing"
 	exit 1
 fi
+
+grep -arh -m1 '^Message-ID' "${OUTPUTDIR}" | grep -oE '[0-9]+' | while read ID; do
+	MIDS["$ID"]=1
+done
 
 curl "https://hn.algolia.com/api/v1/search?tags=front_page" | jq -r '.hits | .[] | .objectID' | while read STORYID; do
 	dump-story "$OUTPUTDIR" "$STORYID"
